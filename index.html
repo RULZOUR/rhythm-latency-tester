@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rhythm Game Latency Tester</title>
+<style>
+  :root {
+    --bg: #0e0e12;
+    --panel: #181820;
+    --border: #2a2a35;
+    --text: #ffffff;
+    --text-muted: #9090a0;
+    --accent: #ff66aa;
+    --accent-glow: rgba(255, 102, 170, 0.4);
+    --good: #66ff99;
+    --warn: #ffcc66;
+    --bad: #ff5555;
+    --font-main: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    --font-mono: 'Consolas', 'Courier New', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  body {
+    font-family: var(--font-main);
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    user-select: none;
+  }
+
+  .container {
+    width: 100%;
+    max-width: 850px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  .header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .header h1 { font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
+  .lang-switch {
+    background: var(--panel); border: 1px solid var(--border);
+    padding: 5px; border-radius: 8px; display: flex; gap: 5px;
+  }
+  .lang-btn {
+    background: transparent; color: var(--text-muted); border: none;
+    padding: 5px 12px; border-radius: 6px; cursor: pointer; font-weight: bold;
+    transition: 0.2s;
+  }
+  .lang-btn.active { background: var(--accent); color: #fff; }
+
+  .controls {
+    display: flex; justify-content: space-between; align-items: center;
+    background: var(--panel); padding: 15px 20px; border-radius: 16px;
+    border: 1px solid var(--border);
+  }
+  .control-group { display: flex; align-items: center; gap: 10px; }
+  label { font-size: 13px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+  
+  input[type=number] {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 8px; border-radius: 8px; font-size: 16px; font-family: var(--font-mono);
+    width: 70px; text-align: center; outline: none;
+  }
+  input[type=number]:focus { border-color: var(--accent); }
+  
+  input[type=range] { -webkit-appearance: none; width: 90px; background: transparent; }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; margin-top: -6px;
+  }
+  input[type=range]::-webkit-slider-runnable-track {
+    width: 100%; height: 4px; cursor: pointer; background: var(--border); border-radius: 2px;
+  }
+
+  button.start-btn {
+    background: var(--accent); color: #fff; border: none; padding: 12px 30px;
+    border-radius: 10px; font-size: 16px; font-weight: 700; cursor: pointer;
+    transition: 0.2s; box-shadow: 0 0 15px var(--accent-glow);
+  }
+  button.start-btn:hover { transform: translateY(-2px); box-shadow: 0 0 25px var(--accent-glow); }
+  button.start-btn.stop { background: var(--bad); box-shadow: none; }
+
+  .stage {
+    position: relative; width: 100%; height: 250px;
+    background: var(--panel); border-radius: 20px; border: 1px solid var(--border);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; overflow: hidden;
+  }
+  .metronome-ring {
+    position: absolute; width: 180px; height: 180px; border-radius: 50%;
+    border: 2px solid var(--accent); opacity: 0; pointer-events: none;
+    box-shadow: 0 0 30px var(--accent-glow), inset 0 0 20px var(--accent-glow);
+  }
+  .metronome-ring.beat { animation: pulseBeat 0.3s ease-out; }
+  @keyframes pulseBeat { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+
+  .tap-count { z-index: 10; font-size: 72px; font-weight: 800; line-height: 1; }
+  .tap-hint { z-index: 10; margin-top: 5px; font-size: 13px; color: var(--text-muted); letter-spacing: 1px; }
+  .tap-indicator { position: absolute; bottom: 20px; font-size: 22px; font-weight: bold; font-family: var(--font-mono); }
+
+  .recommendation-box {
+    background: linear-gradient(135deg, rgba(255, 102, 170, 0.1), rgba(255, 102, 170, 0.02));
+    border: 2px solid var(--accent); border-radius: 16px; padding: 20px;
+    text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px;
+  }
+  .rec-title { font-size: 14px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+  .rec-value { font-size: 48px; font-weight: 900; font-family: var(--font-mono); color: var(--accent); line-height: 1; text-shadow: 0 0 20px var(--accent-glow); }
+  .rec-desc { font-size: 13px; color: var(--text-muted); max-width: 600px; line-height: 1.5; }
+
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+  .stat-box {
+    background: var(--panel); border: 1px solid var(--border); padding: 15px;
+    border-radius: 14px; text-align: center; display: flex; flex-direction: column; gap: 5px;
+  }
+  .stat-val { font-size: 28px; font-weight: 800; font-family: var(--font-mono); }
+  .stat-lbl { font-size: 12px; color: var(--text-muted); text-transform: uppercase; }
+
+  .history-container {
+    height: 60px; background: var(--panel); border: 1px solid var(--border);
+    border-radius: 14px; position: relative; display: flex; align-items: center; padding: 0 10px;
+  }
+  .history-center-line { position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: var(--border); z-index: 1; }
+  .history-bar {
+    position: absolute; height: 24px; width: 4px; border-radius: 2px;
+    transform: translateX(-50%); transition: all 0.2s;
+  }
+  .history-bar.early { background: var(--good); }
+  .history-bar.late { background: var(--bad); }
+  .history-bar.perfect { background: var(--accent); }
+
+  .footer-info { display: flex; justify-content: space-between; font-size: 12px; color: var(--text-muted); font-family: var(--font-mono); padding: 0 5px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <h1 id="ui-title">Тест задержки для ритм-игр</h1>
+    <div class="lang-switch">
+      <button class="lang-btn" onclick="setLang('en')" id="btn-en">EN</button>
+      <button class="lang-btn active" onclick="setLang('ru')" id="btn-ru">RU</button>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="control-group">
+      <label id="ui-bpm">BPM</label>
+      <input type="number" id="bpmInput" value="120" min="40" max="300" step="1">
+    </div>
+    <div class="control-group">
+      <label id="ui-vol">Громкость</label>
+      <input type="range" id="volInput" value="50" min="0" max="100">
+    </div>
+    <button class="start-btn" id="toggleBtn" onclick="toggleTest()">Старт (Enter)</button>
+  </div>
+
+  <div class="stage" id="stage">
+    <div class="metronome-ring" id="ring"></div>
+    <div class="tap-count" id="tapCount">0</div>
+    <div class="tap-hint" id="ui-tap-hint">ПРОБЕЛ ИЛИ КЛИК</div>
+    <div class="tap-indicator" id="tapOffset">— мс</div>
+  </div>
+
+  <div class="recommendation-box">
+    <div class="rec-title" id="ui-rec-title">Рекомендуемый оффсет для игры</div>
+    <div class="rec-value" id="recValue">0 мс</div>
+    <div class="rec-desc" id="ui-rec-desc">Сделайте минимум 8 тапов для расчета. Это значение нужно вбить в настройки аудио в игре (Audio Offset / Universal Offset).</div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-box">
+      <div class="stat-val" id="meanVal">—</div>
+      <div class="stat-lbl" id="ui-mean">Среднее</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" id="medianVal">—</div>
+      <div class="stat-lbl" id="ui-median">Медиана</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-val" id="stdVal">—</div>
+      <div class="stat-lbl" id="ui-std">Разброс (σ)</div>
+    </div>
+  </div>
+
+  <div class="history-container" id="history">
+    <div class="history-center-line"></div>
+  </div>
+
+  <div class="footer-info">
+    <span>base: <span id="baseLat">—</span></span>
+    <span>output: <span id="outLat">—</span></span>
+    <span>rate: <span id="sampleRate">—</span></span>
+  </div>
+</div>
+
+<script>
+const i18n = {
+  ru: {
+    title: "Тест задержки для ритм-игр",
+    bpm: "BPM",
+    vol: "Громкость",
+    start: "Старт (Enter)",
+    stop: "Стоп (Enter)",
+    tapHint: "ПРОБЕЛ ИЛИ КЛИК",
+    recTitle: "Рекомендуемый оффсет для игры",
+    recDesc: "Вбейте это значение в Audio Offset / Universal Offset в игре. Если вы тапаете раньше (минус), ставьте плюс, и наоборот.",
+    mean: "Среднее",
+    median: "Медиана",
+    std: "Разброс (σ)",
+    ms: "мс",
+    miss: "Промах",
+    tapMore: "Сделай еще тапов..."
+  },
+  en: {
+    title: "Rhythm Game Latency Tester",
+    bpm: "BPM",
+    vol: "Volume",
+    start: "Start (Enter)",
+    stop: "Stop (Enter)",
+    tapHint: "SPACE OR CLICK",
+    recTitle: "Recommended Game Offset",
+    recDesc: "Put this value into Audio Offset / Universal Offset in the game. If you tap early (minus), set positive offset, and vice versa.",
+    mean: "Mean",
+    median: "Median",
+    std: "Std Dev (σ)",
+    ms: "ms",
+    miss: "Miss",
+    tapMore: "Tap more..."
+  }
+};
+
+let currentLang = 'ru';
+
+function setLang(lang) {
+  currentLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById(`btn-${lang}`).classList.add('active');
+  
+  const t = i18n[lang];
+  document.getElementById('ui-title').textContent = t.title;
+  document.getElementById('ui-bpm').textContent = t.bpm;
+  document.getElementById('ui-vol').textContent = t.vol;
+  document.getElementById('ui-tap-hint').textContent = t.tapHint;
+  document.getElementById('ui-rec-title').textContent = t.recTitle;
+  document.getElementById('ui-rec-desc').textContent = t.recDesc;
+  document.getElementById('ui-mean').textContent = t.mean;
+  document.getElementById('ui-median').textContent = t.median;
+  document.getElementById('ui-std').textContent = t.std;
+  
+  document.getElementById('toggleBtn').textContent = running ? t.stop : t.start;
+  updateStats(); 
+}
+
+const bpmInput = document.getElementById('bpmInput');
+const volInput = document.getElementById('volInput');
+const toggleBtn = document.getElementById('toggleBtn');
+const stage = document.getElementById('stage');
+const ring = document.getElementById('ring');
+const tapCountEl = document.getElementById('tapCount');
+const tapOffsetEl = document.getElementById('tapOffset');
+const meanVal = document.getElementById('meanVal');
+const medianVal = document.getElementById('medianVal');
+const stdVal = document.getElementById('stdVal');
+const historyEl = document.getElementById('history');
+const recValue = document.getElementById('recValue');
+
+let audioCtx = null;
+let running = false;
+let nextBeatTime = 0;
+let scheduledBeats = [];
+let visualBeats = [];
+let schedulerTimer = null;
+let requestAnimationFrameId = null;
+let offsets = [];
+
+const LOOKAHEAD = 0.1;
+const SCHED_INTERVAL = 25;
+
+bpmInput.value = localStorage.getItem('bpm') || 120;
+volInput.value = localStorage.getItem('vol') || 50;
+
+bpmInput.addEventListener('change', () => {
+  localStorage.setItem('bpm', bpmInput.value);
+  if (running) { stopTest(); startTest(); }
+});
+volInput.addEventListener('input', () => localStorage.setItem('vol', volInput.value));
+
+function getVolume() { return volInput.value / 100; }
+function getBeatInterval() { return 60 / (Math.max(40, Math.min(300, parseFloat(bpmInput.value) || 120))); }
+
+function ensureAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  document.getElementById('baseLat').textContent = audioCtx.baseLatency ? (audioCtx.baseLatency * 1000).toFixed(1) + 'ms' : 'N/A';
+  document.getElementById('outLat').textContent = audioCtx.outputLatency ? (audioCtx.outputLatency * 1000).toFixed(1) + 'ms' : 'N/A';
+  document.getElementById('sampleRate').textContent = (audioCtx.sampleRate / 1000).toFixed(1) + 'kHz';
+}
+
+function scheduleClick(t) {
+  if (getVolume() === 0) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(800, t);
+  gain.gain.setValueAtTime(0.0001, t);
+  gain.gain.exponentialRampToValueAtTime(0.5 * getVolume(), t + 0.002);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.05);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start(t);
+  osc.stop(t + 0.06);
+}
+
+function scheduler() {
+  if (!running) return;
+  const interval = getBeatInterval();
+  while (nextBeatTime < audioCtx.currentTime + LOOKAHEAD) {
+    scheduleClick(nextBeatTime);
+    scheduledBeats.push(nextBeatTime);
+    visualBeats.push(nextBeatTime);
+    nextBeatTime += interval;
+  }
+  const cutoff = audioCtx.currentTime - 2;
+  scheduledBeats = scheduledBeats.filter(t => t > cutoff);
+}
+
+function drawLoop() {
+  if (!running) return;
+  const now = audioCtx.currentTime;
+  for (let i = visualBeats.length - 1; i >= 0; i--) {
+    if (now >= visualBeats[i] && now < visualBeats[i] + 0.05) {
+      ring.classList.remove('beat');
+      void ring.offsetWidth;
+      ring.classList.add('beat');
+      visualBeats.splice(i, 1);
+    }
+  }
+  requestAnimationFrameId = requestAnimationFrame(drawLoop);
+}
+
+function startTest() {
+  ensureAudio();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+  running = true;
+  offsets = [];
+  scheduledBeats = [];
+  visualBeats = [];
+  tapCountEl.textContent = '0';
+  tapOffsetEl.textContent = '— ' + i18n[currentLang].ms;
+  tapOffsetEl.style.color = 'var(--text-muted)';
+  updateStats();
+  clearHistory();
+  
+  nextBeatTime = audioCtx.currentTime + 0.8;
+  toggleBtn.textContent = i18n[currentLang].stop;
+  toggleBtn.classList.add('stop');
+  
+  schedulerTimer = setInterval(scheduler, SCHED_INTERVAL);
+  scheduler();
+  drawLoop();
+}
+
+function stopTest() {
+  running = false;
+  clearInterval(schedulerTimer);
+  cancelAnimationFrame(requestAnimationFrameId);
+  toggleBtn.textContent = i18n[currentLang].start;
+  toggleBtn.classList.remove('stop');
+}
+
+function toggleTest() { running ? stopTest() : startTest(); }
+
+function playTapSound() {
+  if (!audioCtx || getVolume() === 0) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(1200, audioCtx.currentTime);
+  gain.gain.setValueAtTime(0.1 * getVolume(), audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.03);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.04);
+}
+
+function recordTap() {
+  if (!running || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  let nearest = null;
+  let minAbs = Infinity;
+  for (const b of scheduledBeats) {
+    const d = now - b;
+    if (Math.abs(d) < minAbs) { minAbs = Math.abs(d); nearest = b; }
+  }
+  if (nearest === null) return;
+  const half = getBeatInterval() / 2;
+  
+  if (minAbs > half) {
+    tapOffsetEl.textContent = i18n[currentLang].miss;
+    tapOffsetEl.style.color = 'var(--bad)';
+    return;
+  }
+
+  const offsetMs = (now - nearest) * 1000;
+  offsets.push(offsetMs);
+  playTapSound();
+  
+  tapCountEl.textContent = offsets.length;
+  const sign = offsetMs >= 0 ? '+' : '';
+  tapOffsetEl.textContent = sign + offsetMs.toFixed(0) + ' ' + i18n[currentLang].ms;
+  tapOffsetEl.style.color = offsetMs >= 0 ? 'var(--bad)' : 'var(--good)';
+
+  addHistoryBar(offsetMs);
+  updateStats();
+}
+
+function addHistoryBar(offset) {
+  const bar = document.createElement('div');
+  bar.className = 'history-bar ' + (offset > 15 ? 'late' : offset < -15 ? 'early' : 'perfect');
+  let pct = 50 + (Math.max(-200, Math.min(200, offset)) / 200) * 50;
+  bar.style.left = pct + '%';
+  bar.style.top = 'calc(50% - 12px + ' + (Math.random() * 16 - 8) + 'px)';
+  historyEl.appendChild(bar);
+  if (historyEl.children.length > 31) historyEl.removeChild(historyEl.children[1]);
+}
+
+function clearHistory() {
+  while (historyEl.children.length > 1) historyEl.removeChild(historyEl.children[1]);
+}
+
+function updateStats() {
+  if (offsets.length === 0) {
+    meanVal.textContent = '—'; medianVal.textContent = '—'; stdVal.textContent = '—';
+    recValue.textContent = '0 ' + i18n[currentLang].ms;
+    recValue.style.color = 'var(--accent)';
+    return;
+  }
+  
+  const data = offsets.length > 5 ? offsets.slice(3) : offsets;
+  const n = data.length;
+  
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const sorted = [...data].sort((a, b) => a - b);
+  const median = n % 2 ? sorted[(n - 1) / 2] : (sorted[n / 2 - 1] + sorted[n / 2]) / 2;
+  const std = Math.sqrt(data.reduce((a, b) => a + (b - mean) ** 2, 0) / n);
+
+  meanVal.textContent = (mean >= 0 ? '+' : '') + mean.toFixed(0);
+  medianVal.textContent = (median >= 0 ? '+' : '') + median.toFixed(0);
+  stdVal.textContent = std.toFixed(0);
+
+  let recommendedOffset = -Math.round(median + 15); 
+  
+  if (offsets.length >= 8) {
+    recValue.textContent = (recommendedOffset > 0 ? '+' : '') + recommendedOffset + ' ' + i18n[currentLang].ms;
+    recValue.style.color = Math.abs(recommendedOffset) < 30 ? 'var(--good)' : 'var(--warn)';
+  } else {
+    recValue.textContent = i18n[currentLang].tapMore;
+    recValue.style.fontSize = '24px';
+    recValue.style.marginTop = '12px';
+    recValue.style.color = 'var(--text-muted)';
+  }
+
+  const setColor = (el, val) => {
+    if (Math.abs(val) < 20) el.style.color = 'var(--good)';
+    else if (Math.abs(val) < 40) el.style.color = 'var(--warn)';
+    else el.style.color = 'var(--bad)';
+  };
+  setColor(meanVal, mean);
+  setColor(medianVal, median);
+  setColor(stdVal, std);
+}
+
+stage.addEventListener('pointerdown', (e) => { e.preventDefault(); recordTap(); });
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { e.preventDefault(); recordTap(); }
+  else if (e.code === 'Enter') { e.preventDefault(); toggleTest(); }
+});
+
+setLang('ru');
+</script>
+</body>
+</html>
